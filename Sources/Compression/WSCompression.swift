@@ -26,8 +26,8 @@
 //
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
+import CZlib
 import Foundation
-import zlib
 
 public class WSCompression: CompressionHandler {
     let headerWSExtensionName = "Sec-WebSocket-Extensions"
@@ -35,11 +35,11 @@ public class WSCompression: CompressionHandler {
     var compressor: Compressor?
     var decompressorTakeOver = false
     var compressorTakeOver = false
-    
+
     public init() {
-        
+
     }
-    
+
     public func load(headers: [String: String]) {
         guard let extensionHeader = headers[headerWSExtensionName] else { return }
         decompressorTakeOver = false
@@ -48,7 +48,7 @@ public class WSCompression: CompressionHandler {
         // assume defaults unless the headers say otherwise
         compressor = Compressor(windowBits: 15)
         decompressor = Decompressor(windowBits: 15)
-        
+
         let parts = extensionHeader.components(separatedBy: ";")
         for p in parts {
             let part = p.trimmingCharacters(in: .whitespaces)
@@ -69,7 +69,7 @@ public class WSCompression: CompressionHandler {
             }
         }
     }
-    
+
     public func decompress(data: Data, isFinal: Bool) -> Data? {
         guard let decompressor = decompressor else { return nil }
         do {
@@ -83,7 +83,7 @@ public class WSCompression: CompressionHandler {
         }
         return nil
     }
-    
+
     public func compress(data: Data) -> Data? {
         guard let compressor = compressor else { return nil }
         do {
@@ -97,7 +97,6 @@ public class WSCompression: CompressionHandler {
         }
         return nil
     }
-    
 
 }
 
@@ -113,8 +112,10 @@ class Decompressor {
     }
 
     private func initInflate() -> Bool {
-        if Z_OK == inflateInit2_(&strm, -CInt(windowBits),
-                                 ZLIB_VERSION, CInt(MemoryLayout<z_stream>.size))
+        if Z_OK
+            == inflateInit2_(
+                &strm, -CInt(windowBits),
+                ZLIB_VERSION, CInt(MemoryLayout<z_stream>.size))
         {
             inflateInitialized = true
             return true
@@ -124,7 +125,10 @@ class Decompressor {
 
     func reset() throws {
         teardownInflate()
-        guard initInflate() else { throw WSError(type: .compressionError, message: "Error for decompressor on reset", code: 0) }
+        guard initInflate() else {
+            throw WSError(
+                type: .compressionError, message: "Error for decompressor on reset", code: 0)
+        }
     }
 
     func decompress(_ data: Data, finish: Bool) throws -> Data {
@@ -138,7 +142,7 @@ class Decompressor {
         try decompress(bytes: bytes, count: count, out: &decompressed)
 
         if finish {
-            let tail:[UInt8] = [0x00, 0x00, 0xFF, 0xFF]
+            let tail: [UInt8] = [0x00, 0x00, 0xFF, 0xFF]
             try decompress(bytes: tail, count: tail.count, out: &decompressed)
         }
 
@@ -162,10 +166,11 @@ class Decompressor {
             out.append(buffer, count: byteCount)
         } while res == Z_OK && strm.avail_out == 0
 
-        guard (res == Z_OK && strm.avail_out > 0)
-            || (res == Z_BUF_ERROR && Int(strm.avail_out) == buffer.count)
-            else {
-                throw WSError(type: .compressionError, message: "Error on decompressing", code: 0)
+        guard
+            (res == Z_OK && strm.avail_out > 0)
+                || (res == Z_BUF_ERROR && Int(strm.avail_out) == buffer.count)
+        else {
+            throw WSError(type: .compressionError, message: "Error on decompressing", code: 0)
         }
     }
 
@@ -192,9 +197,11 @@ class Compressor {
     }
 
     private func initDeflate() -> Bool {
-        if Z_OK == deflateInit2_(&strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
-                                 -CInt(windowBits), 8, Z_DEFAULT_STRATEGY,
-                                 ZLIB_VERSION, CInt(MemoryLayout<z_stream>.size))
+        if Z_OK
+            == deflateInit2_(
+                &strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
+                -CInt(windowBits), 8, Z_DEFAULT_STRATEGY,
+                ZLIB_VERSION, CInt(MemoryLayout<z_stream>.size))
         {
             deflateInitialized = true
             return true
@@ -204,7 +211,10 @@ class Compressor {
 
     func reset() throws {
         teardownDeflate()
-        guard initDeflate() else { throw WSError(type: .compressionError, message: "Error for compressor on reset", code: 0) }
+        guard initDeflate() else {
+            throw WSError(
+                type: .compressionError, message: "Error for compressor on reset", code: 0)
+        }
     }
 
     func compress(_ data: Data) throws -> Data {
@@ -215,7 +225,7 @@ class Compressor {
 
         var compressed = Data()
         var res: CInt = 0
-        data.withUnsafeBytes { (ptr:UnsafePointer<UInt8>) -> Void in
+        data.withUnsafeBytes { (ptr: UnsafePointer<UInt8>) -> Void in
             strm.next_in = UnsafeMutablePointer<UInt8>(mutating: ptr)
             strm.avail_in = CUnsignedInt(data.count)
 
@@ -229,13 +239,13 @@ class Compressor {
 
                 let byteCount = buffer.count - Int(strm.avail_out)
                 compressed.append(buffer, count: byteCount)
-            }
-            while res == Z_OK && strm.avail_out == 0
+            } while res == Z_OK && strm.avail_out == 0
 
         }
 
-        guard res == Z_OK && strm.avail_out > 0
-            || (res == Z_BUF_ERROR && Int(strm.avail_out) == buffer.count)
+        guard
+            res == Z_OK && strm.avail_out > 0
+                || (res == Z_BUF_ERROR && Int(strm.avail_out) == buffer.count)
         else {
             throw WSError(type: .compressionError, message: "Error on compressing", code: 0)
         }
