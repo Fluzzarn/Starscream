@@ -20,36 +20,37 @@
 //
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
+import Crypto
 import Foundation
-import CommonCrypto
 
 public enum FoundationSecurityError: Error {
     case invalidRequest
 }
 
-public class FoundationSecurity  {
+public class FoundationSecurity {
     var allowSelfSigned = false
-    
+
     public init(allowSelfSigned: Bool = false) {
         self.allowSelfSigned = allowSelfSigned
     }
-    
-    
+
 }
 
 extension FoundationSecurity: CertificatePinning {
-    public func evaluateTrust(trust: SecTrust, domain: String?, completion: ((PinningState) -> ())) {
+    public func evaluateTrust(
+        trust: SecTrust, domain: String?, completion: ((PinningState) -> Void)
+    ) {
         if allowSelfSigned {
             completion(.success)
             return
         }
-        
+
         SecTrustSetPolicies(trust, SecPolicyCreateSSL(true, domain as NSString?))
-        
+
         handleSecurityTrust(trust: trust, completion: completion)
     }
-    
-    private func handleSecurityTrust(trust: SecTrust, completion: ((PinningState) -> ())) {
+
+    private func handleSecurityTrust(trust: SecTrust, completion: ((PinningState) -> Void)) {
         if #available(iOS 12.0, OSX 10.14, watchOS 5.0, tvOS 12.0, *) {
             var error: CFError?
             if SecTrustEvaluateWithError(trust, &error) {
@@ -61,14 +62,16 @@ extension FoundationSecurity: CertificatePinning {
             handleOldSecurityTrust(trust: trust, completion: completion)
         }
     }
-    
-    private func handleOldSecurityTrust(trust: SecTrust, completion: ((PinningState) -> ())) {
+
+    private func handleOldSecurityTrust(trust: SecTrust, completion: ((PinningState) -> Void)) {
         var result: SecTrustResultType = .unspecified
         SecTrustEvaluate(trust, &result)
         if result == .unspecified || result == .proceed {
             completion(.success)
         } else {
-            let e = CFErrorCreate(kCFAllocatorDefault, "FoundationSecurityError" as NSString?, Int(result.rawValue), nil)
+            let e = CFErrorCreate(
+                kCFAllocatorDefault, "FoundationSecurityError" as NSString?, Int(result.rawValue),
+                nil)
             completion(.failed(e))
         }
     }
@@ -79,21 +82,19 @@ extension FoundationSecurity: HeaderValidator {
         if let acceptKey = headers[HTTPWSHeader.acceptName] {
             let sha = "\(key)258EAFA5-E914-47DA-95CA-C5AB0DC85B11".sha1Base64()
             if sha != acceptKey {
-                return WSError(type: .securityError, message: "accept header doesn't match", code: SecurityErrorCode.acceptFailed.rawValue)
+                return WSError(
+                    type: .securityError, message: "accept header doesn't match",
+                    code: SecurityErrorCode.acceptFailed.rawValue)
             }
         }
         return nil
     }
 }
 
-private extension String {
-    func sha1Base64() -> String {
+extension String {
+    fileprivate func sha1Base64() -> String {
         let data = self.data(using: .utf8)!
-        let pointer = data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> [UInt8] in
-            var digest = [UInt8](repeating: 0, count:Int(CC_SHA1_DIGEST_LENGTH))
-            CC_SHA1(bytes.baseAddress, CC_LONG(data.count), &digest)
-            return digest
-        }
-        return Data(pointer).base64EncodedString()
+        let digest = Insecure.SHA1.hash(data: data)
+        return Data(digest).base64EncodedString()
     }
 }
