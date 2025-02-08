@@ -22,8 +22,13 @@
 
 import Foundation
 
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
+
 public class WSEngine: Engine, TransportEventClient, FramerEventClient,
-FrameCollectorDelegate, HTTPHandlerDelegate {
+    FrameCollectorDelegate, HTTPHandlerDelegate
+{
     private let transport: Transport
     private let framer: Framer
     private let httpHandler: HTTPHandler
@@ -31,7 +36,7 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
     private let certPinner: CertificatePinning?
     private let headerChecker: HeaderValidator
     private var request: URLRequest!
-    
+
     private let frameHandler = FrameCollector()
     private var didUpgrade = false
     private var secKeyValue = ""
@@ -39,16 +44,18 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
     private let mutex = DispatchSemaphore(value: 1)
     private var canSend = false
     private var isConnecting = false
-    
+
     weak var delegate: EngineDelegate?
     public var respondToPingWithPong: Bool = true
-    
-    public init(transport: Transport,
-                certPinner: CertificatePinning? = nil,
-                headerValidator: HeaderValidator = FoundationSecurity(),
-                httpHandler: HTTPHandler = FoundationHTTPHandler(),
-                framer: Framer = WSFramer(),
-                compressionHandler: CompressionHandler? = nil) {
+
+    public init(
+        transport: Transport,
+        certPinner: CertificatePinning? = nil,
+        headerValidator: HeaderValidator = FoundationSecurity(),
+        httpHandler: HTTPHandler = FoundationHTTPHandler(),
+        framer: Framer = WSFramer(),
+        compressionHandler: CompressionHandler? = nil
+    ) {
         self.transport = transport
         self.framer = framer
         self.httpHandler = httpHandler
@@ -58,11 +65,11 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
         framer.updateCompression(supports: compressionHandler != nil)
         frameHandler.delegate = self
     }
-    
+
     public func register(delegate: EngineDelegate) {
         self.delegate = delegate
     }
-    
+
     public func start(request: URLRequest) {
         mutex.wait()
         let isConnecting = self.isConnecting
@@ -71,7 +78,7 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
         if isConnecting || isConnected {
             return
         }
-        
+
         self.request = request
         transport.register(delegate: self)
         framer.register(delegate: self)
@@ -83,34 +90,37 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
         mutex.wait()
         self.isConnecting = true
         mutex.signal()
-        transport.connect(url: url, timeout: request.timeoutInterval, certificatePinning: certPinner)
+        transport.connect(
+            url: url, timeout: request.timeoutInterval, certificatePinning: certPinner)
     }
-    
+
     public func stop(closeCode: UInt16 = CloseCode.normal.rawValue) {
         let capacity = MemoryLayout<UInt16>.size
         var pointer = [UInt8](repeating: 0, count: capacity)
         writeUint16(&pointer, offset: 0, value: closeCode)
         let payload = Data(bytes: pointer, count: MemoryLayout<UInt16>.size)
-        write(data: payload, opcode: .connectionClose, completion: { [weak self] in
-            self?.reset()
-            self?.forceStop()
-        })
+        write(
+            data: payload, opcode: .connectionClose,
+            completion: { [weak self] in
+                self?.reset()
+                self?.forceStop()
+            })
     }
-    
+
     public func forceStop() {
         mutex.wait()
         isConnecting = false
         mutex.signal()
-        
+
         transport.disconnect()
     }
-    
-    public func write(string: String, completion: (() -> ())?) {
+
+    public func write(string: String, completion: (() -> Void)?) {
         let data = string.data(using: .utf8)!
         write(data: data, opcode: .textFrame, completion: completion)
     }
-    
-    public func write(data: Data, opcode: FrameOpCode, completion: (() -> ())?) {
+
+    public func write(data: Data, opcode: FrameOpCode, completion: (() -> Void)?) {
         writeQueue.async { [weak self] in
             guard let s = self else { return }
             s.mutex.wait()
@@ -119,30 +129,35 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
             if !canWrite {
                 return
             }
-            
+
             var isCompressed = false
             var sendData = data
             if let compressedData = s.compressionHandler?.compress(data: data) {
                 sendData = compressedData
                 isCompressed = true
             }
-            
-            let frameData = s.framer.createWriteFrame(opcode: opcode, payload: sendData, isCompressed: isCompressed)
-            s.transport.write(data: frameData, completion: {_ in
-                completion?()
-            })
+
+            let frameData = s.framer.createWriteFrame(
+                opcode: opcode, payload: sendData, isCompressed: isCompressed)
+            s.transport.write(
+                data: frameData,
+                completion: { _ in
+                    completion?()
+                })
         }
     }
-    
+
     // MARK: - TransportEventClient
-    
+
     public func connectionChanged(state: ConnectionState) {
         switch state {
         case .connected:
             secKeyValue = HTTPWSHeader.generateWebSocketKey()
-            let wsReq = HTTPWSHeader.createUpgrade(request: request, supportsCompression: framer.supportsCompression(), secKeyValue: secKeyValue)
+            let wsReq = HTTPWSHeader.createUpgrade(
+                request: request, supportsCompression: framer.supportsCompression(),
+                secKeyValue: secKeyValue)
             let data = httpHandler.convert(request: wsReq)
-            transport.write(data: data, completion: {_ in })
+            transport.write(data: data, completion: { _ in })
         case .waiting:
             break
         case .failed(let error):
@@ -165,15 +180,15 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
             mutex.wait()
             isConnecting = false
             mutex.signal()
-            
+
             broadcast(event: .cancelled)
         case .peerClosed:
             broadcast(event: .peerClosed)
         }
     }
-    
+
     // MARK: - HTTPHandlerDelegate
-    
+
     public func didReceiveHTTP(event: HTTPEvent) {
         switch event {
         case .success(let headers):
@@ -198,9 +213,9 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
             handleError(error)
         }
     }
-    
+
     // MARK: - FramerEventClient
-    
+
     public func frameProcessed(event: FrameEvent) {
         switch event {
         case .frame(let frame):
@@ -209,13 +224,13 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
             handleError(error)
         }
     }
-    
+
     // MARK: - FrameCollectorDelegate
-    
+
     public func decompress(data: Data, isFinal: Bool) -> Data? {
         return compressionHandler?.decompress(data: data, isFinal: isFinal)
     }
-    
+
     public func didForm(event: FrameCollector.Event) {
         switch event {
         case .text(let string):
@@ -236,11 +251,11 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
             handleError(error)
         }
     }
-    
+
     private func broadcast(event: WebSocketEvent) {
         delegate?.didReceive(event: event)
     }
-    
+
     //This call can be coming from a lot of different queues/threads.
     //be aware of that when modifying shared variables
     private func handleError(_ error: Error?) {
@@ -249,10 +264,10 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
         } else {
             stop()
         }
-        
+
         delegate?.didReceive(event: .error(error))
     }
-    
+
     private func reset() {
         mutex.wait()
         isConnecting = false
@@ -260,6 +275,5 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
         didUpgrade = false
         mutex.signal()
     }
-    
-    
+
 }

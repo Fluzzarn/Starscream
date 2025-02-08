@@ -22,6 +22,10 @@
 
 import Foundation
 
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
+
 public protocol CompressionHandler {
     func load(headers: [String: String])
     func decompress(data: Data, isFinal: Bool) -> Data?

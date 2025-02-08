@@ -22,6 +22,10 @@
 
 import Foundation
 
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
+
 public enum ConnectionEvent {
     case connected([String: String])
     case disconnected(String, UInt16)
@@ -52,5 +56,3 @@ public enum ServerEvent {
 public protocol Server {
     func start(address: String, port: UInt16) -> Error?
 }
-
-

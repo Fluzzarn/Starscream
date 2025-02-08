@@ -22,6 +22,10 @@
 
 import Foundation
 
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
+
 public protocol FrameCollectorDelegate: AnyObject {
     func didForm(event: FrameCollector.Event)
     func decompress(data: Data, isFinal: Bool) -> Data?

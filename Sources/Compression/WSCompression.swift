@@ -29,6 +29,10 @@
 import CZlib
 import Foundation
 
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
+
 public class WSCompression: CompressionHandler {
     let headerWSExtensionName = "Sec-WebSocket-Extensions"
     var decompressor: Decompressor?
